@@ -3,21 +3,111 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>꽃 소유자 검색(JSON)</title>
+<title>꽃 소유자 검색</title>
 <style>
-body{font-family:Arial;background:#f5f5f5;padding:20px}
-.box{max-width:650px;margin:auto;background:#fff;padding:20px;border-radius:12px}
-input,button{width:100%;padding:12px;margin-top:10px;box-sizing:border-box}
-button{background:#4caf50;color:#fff;border:none;border-radius:8px}
-.card{margin-top:15px;padding:15px;background:#eef9ee;border-left:5px solid #4caf50}
-.err{color:#c00;margin-top:15px}
+body {
+    font-family: 'Malgun Gothic', Arial, sans-serif;
+    background-color: #fff5f7;
+    padding: 20px;
+    color: #4a3f41;
+}
+.box {
+    max-width: 650px;
+    margin: 50px auto;
+    background: #fff;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(255, 182, 193, 0.4);
+    border: 1.5px solid #ffe3e8;
+}
+h2 {
+    text-align: center;
+    color: #ff6b8b;
+    margin-bottom: 25px;
+    font-weight: bold;
+    font-size: 24px;
+}
+input, button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 12px;
+    box-sizing: border-box;
+}
+input {
+    border: 2px solid #ffccd5;
+    border-radius: 10px;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+input:focus {
+    outline: none;
+    border-color: #ff6b8b;
+    box-shadow: 0 0 8px rgba(255, 107, 139, 0.4);
+}
+button {
+    background: #ff809b;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s, transform 0.1s;
+}
+button:hover {
+    background: #ff6b8b;
+}
+button:active {
+    transform: scale(0.99);
+}
+.card {
+    margin-top: 18px;
+    padding: 18px;
+    background: #fff0f3;
+    border-left: 6px solid #ff809b;
+    border-radius: 0 12px 12px 0;
+    box-shadow: 0 3px 8px rgba(255, 224, 230, 0.6);
+}
+.card h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #d84b65;
+    font-size: 18px;
+}
+.card b {
+    color: #ff6b8b;
+    font-size: 14px;
+}
+.card .owners-list {
+    margin-top: 5px;
+    line-height: 1.6;
+    font-size: 15px;
+}
+.err {
+    color: #d84b65;
+    margin-top: 20px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 15px;
+}
+.info {
+    color: #8a7a7c;
+    font-size: 14px;
+    margin-top: 5px;
+    text-align: center;
+    line-height: 1.5;
+}
 </style>
 </head>
 <body>
 <div class="box">
 <h2>🌸 애진화방의 모든 꽃</h2>
-<input id="q" placeholder="꽃 이름 입력">
-<button onclick="searchFlower()">검색</button>
+<div class="info">
+    ※ 꼭 전체 이름을 다 쓰지 않아도 괜찮아요!<br>
+    (예: <b>분홍,노랑 덩굴장미</b> 대신 <b>덩굴장미</b>만 써도 검색 가능합니다.)
+</div>
+<input id="q" placeholder="검색할 꽃 이름을 입력하세요">
+<button onclick="searchFlower()">꽃 검색하기</button>
 <div id="out"></div>
 </div>
 
@@ -26,7 +116,9 @@ const SHEET_ID="1HwHxN8xPGIiNss8EwSetaY9u7IYE6vtQcqKdvTlzHQw";
 const URL=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
 
 let table=null;
-const norm=s=>(s||"").replace(/\s+/g,"").trim();
+
+// 값을 안전하게 문자열로 바꾸고 모든 공백을 제거하는 함수
+const norm = s => (s !== null && s !== undefined ? String(s) : "").replace(/\s+/g, "");
 
 async function load(){
  if(table) return;
@@ -37,36 +129,65 @@ async function load(){
 
 async function searchFlower(){
  const out=document.getElementById("out");
- out.innerHTML="불러오는 중...";
- await load();
+ out.innerHTML="<div class='info'>정보를 불러오고 있습니다... 🌸</div>";
+ 
+ try {
+     await load();
+ } catch (error) {
+     out.innerHTML="<div class='err'>데이터 로드에 실패했습니다. 다시 시도해주세요.</div>";
+     return;
+ }
 
+ // 입력값의 공백 제거
  const key=norm(document.getElementById("q").value);
- if(!key){out.innerHTML="<div class='err'>꽃 이름을 입력하세요.</div>";return;}
+ if(!key){
+     out.innerHTML="<div class='err'>꽃 이름을 입력해 주세요!</div>";
+     return;
+ }
 
- let owners=[];
- let flower="";
+ let resultsHTML = "";
+ let matchCount = 0;
 
- for(let r=1;r<table.length;r++){
+ // 헤더 정보 (소유자 이름들)
+ const header=table[0].c;
+
+ // 1번째 로우부터 데이터를 탐색합니다.
+ for(let r=1; r<table.length; r++){
    const cells=table[r].c;
-   if(norm(cells[0]?.v)==key){
-      flower=cells[0].v;
-      const header=table[0].c;
-      for(let c=1;c<header.length;c++){
+   if(!cells || !cells[0]) continue;
+   
+   const flowerName = cells[0].v; // 원래 꽃 이름 (공백 포함)
+   const normFlowerName = norm(flowerName); // 공백이 제거된 꽃 이름
+
+   // 기존 코드의 '===' 대신 'includes'를 사용하여 부분 검색이 가능하도록 설정
+   // 예: '덩굴장미' 입력시 '분홍,노랑 덩굴장미'에 포함되므로 참이 됨
+   if(normFlowerName.includes(key)){
+      matchCount++;
+      let owners=[];
+      
+      for(let c=1; c<header.length; c++){
          const mark=(cells[c]?.v||"").toString().trim();
          if(["O","o","○","◯","⭕","TRUE"].includes(mark)){
             owners.push(header[c]?.v||"");
          }
       }
-      break;
+      
+      resultsHTML += `<div class="card">
+         <h3>✨ ${flowerName}</h3>
+         <b>🌸 소유자 목록</b>
+         <div class="owners-list">
+            ${owners.length ? owners.join("<br>") : "등록된 소유자가 없습니다."}
+         </div>
+      </div>`;
    }
  }
 
- if(!flower){
-   out.innerHTML="<div class='err'>검색 결과가 없습니다.</div>";
+ if(matchCount === 0){
+   out.innerHTML="<div class='err'>😭 입력하신 내용에 맞는 꽃을 찾지 못했어요. 다른 단어로 검색해 보세요!</div>";
    return;
  }
 
- out.innerHTML=`<div class="card"><h3>${flower}</h3><b>소유자</b><br>${owners.length?owners.join("<br>"):"없음"}</div>`;
+ out.innerHTML = resultsHTML;
 }
 
 document.getElementById("q").addEventListener("keydown",e=>{if(e.key==="Enter")searchFlower();});
